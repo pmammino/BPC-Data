@@ -1,0 +1,733 @@
+---
+title: "Mark Appel Pitch Report"
+output:
+  html_document:
+    css: styles.css
+---
+
+```{r setup, include=FALSE}
+library(reshape)
+library(rlang)
+library(tidyverse)
+library(mgcv)
+library(REdaS)
+library(gridExtra)
+library(lme4)
+library(Hmisc)
+library(gt)
+library(glue)
+library(cowplot)
+library(merTools)
+library(flextable)
+options(scipen = 999)
+memory.limit(100000)
+
+minors2019 <- read.csv("minors_2021.csv")
+all_pitches <- readRDS("all_pitches.rds")
+all_2020 <- readRDS("all_2020.rds")
+overall <- readRDS("overall.rds")
+
+all_pitches_all <- rbind(all_pitches,all_2020)
+
+all_pitches_all <-mutate(all_pitches_all, whiff=ifelse(description %in% c("swinging_strike","swinging_strike_blocked"),
+                                                           1, 0))
+
+all_pitches_all <- all_pitches_all[,c("pitcher",
+                              "player_name",
+                              "pitch_type",
+                              "Season",
+                              "p_throws",
+                              "stand",
+                              "release_speed",
+                              "release_pos_x",
+                              "release_pos_z",
+                              "plate_x",
+                              "plate_z",
+                              "pfx_x",
+                              "pfx_z",
+                              "vx0",
+                              "vy0",
+                              "vz0",
+                              "ax",
+                              "ay",
+                              "az",
+                              "release_spin_rate",
+                              "release_extension",
+                              "whiff",
+                              "barrel")]
+
+all_pitches_all <- distinct(all_pitches_all)
+
+pitch_stats <- all_pitches_all %>%
+  group_by(pitcher, player_name, pitch_type,p_throws) %>% 
+  arrange(pitcher, player_name, pitch_type,p_throws) %>%
+  summarise(Pitches = n(),
+            Velocity = round(mean(release_speed,na.rm=TRUE),1),
+            Release_x = round(mean(release_pos_x,na.rm=TRUE),2),
+            Release_z = round(mean(release_pos_z,na.rm=TRUE),2),
+            pfx_x = round(mean(pfx_x,na.rm=TRUE),2),
+            pfx_z = round(mean(pfx_z,na.rm=TRUE),2),
+            vx0 = round(mean(vx0,na.rm=TRUE),2),
+            vy0 = round(mean(vy0,na.rm=TRUE),2),
+            vz0 = round(mean(vz0,na.rm=TRUE),2),
+            ax = round(mean(ax,na.rm=TRUE),2),
+            ay = round(mean(ay,na.rm=TRUE),2),
+            az = round(mean(az,na.rm=TRUE),2),
+            release_spin_rate = round(mean(release_spin_rate,na.rm=TRUE),1),
+            release_extension = round(mean(release_extension,na.rm=TRUE),1),
+            Whiff = round(mean(whiff,na.rm=TRUE),3),
+            Barrel = round(mean(barrel,na.rm=TRUE),3),
+            .groups = 'drop') %>%
+  filter(Pitches >= 50)
+
+pitch_stats <- mutate(pitch_stats, pitch_group=ifelse(pitch_type %in% c("FF", "FT","FC", "SI", "FA"),
+                                                              "Fastball", ifelse(pitch_type %in% c("SL", "EP","CU", "KN", "KC"),
+                                                                                 "Breaking", "OffSpeed")))
+
+pitch_stats$pfx_x <- pitch_stats$pfx_x * -12
+pitch_stats$pfx_z <- pitch_stats$pfx_z * 12
+pitch_stats$Move_Angle <- round(rad2deg(atan2(pitch_stats$pfx_x,pitch_stats$pfx_z)),1)
+pitch_stats$Move_Angle <- (pitch_stats$Move_Angle + 360) %% 360
+
+pitch_stats <- pitch_stats %>%
+  filter(!is.na(Velocity)) %>%
+  filter(!is.na(release_extension)) %>%
+  filter(!is.na(Release_z)) %>%
+  filter(!is.na(pfx_x)) %>%
+  filter(!is.na(pfx_z))
+
+pitch_stats <- left_join(pitch_stats,overall)
+
+pitch_stats <- pitch_stats %>%
+  filter(!is.na(xRV_plus))
+
+pitch_comps <- function(pitch_type, velo, release_extend, release_height, hmove, vmove)
+{
+  
+  if(pitch_type %in% c("FF", "FT","FC", "SI", "FA"))
+   {
+     sample <- pitch_stats %>%
+      filter(pitch_group == "Fastball")
+
+     Dist <- mahalanobis(x = sample[,c("Velocity","release_extension","Release_z","pfx_x","pfx_z")], c(velo,release_extend,release_height,hmove,vmove), cov(sample[,c("Velocity","release_extension","Release_z","pfx_x","pfx_z")]))
+     sample$Dist <- Dist
+     sample$Dist <- round(sample$Dist,3)
+     sample <- sample[order(sample$Dist, decreasing=FALSE),]
+  }
+  else if(pitch_type %in% c("SL", "EP","CU", "KN", "KC"))
+  {
+    sample <- pitch_stats %>%
+      filter(pitch_group == "Breaking")
+    
+    Dist <- mahalanobis(x = sample[,c("pfx_x","pfx_z")], c(hmove,vmove), cov(sample[,c("pfx_x","pfx_z")]))
+    sample$Dist <- Dist
+    sample$Dist <- round(sample$Dist,3)
+    sample <- sample[order(sample$Dist, decreasing=FALSE),]
+  }
+  else
+  {
+    sample <- pitch_stats %>%
+      filter(pitch_group == "OffSpeed")
+    
+    Dist <- mahalanobis(x = sample[,c("pfx_x","pfx_z")], c(hmove,vmove), cov(sample[,c("pfx_x","pfx_z")]))
+    sample$Dist <- Dist
+    sample$Dist <- round(sample$Dist,3)
+    sample <- sample[order(sample$Dist, decreasing=FALSE),]
+  }
+}
+
+create_stat_report <- function(pitcher)
+{
+stats <- minors2019 %>%
+  filter(Name == pitcher)
+
+table <- data.frame(t(stats[,c("IP","H","SO","BB","W","SV","ERA")]))
+table <- cbind(names = row.names(table),table)
+colnames(table) <- c("names","stats")
+
+
+stats_summary <- gt(table,groupname_col = "names")  %>%
+  tab_header(
+    title = glue('{pitcher}'),
+    subtitle = "2021 MiLB Stats") %>%
+  tab_options(table.width = pct(50),
+              heading.title.font.weight = "bold",
+              heading.title.font.size = pct(300)) %>%
+  tab_options(
+    heading.background.color = "#44b4e1") %>%
+  tab_style(style = list(
+    cell_fill(color = "#35316a"),
+    cell_text(weight = "bold", color = "white")
+  ),
+  locations = cells_row_groups(groups = unique(table$names))) %>%
+  cols_label(
+    stats = "") %>%
+  cols_align(
+    align = "center",
+    columns = everything()
+  ) %>%
+  fmt_number(
+    columns = "stats",
+    rows = c(2,3,4,5,6),
+    decimals = 0)%>%
+  fmt_number(
+    columns = "stats",
+    rows = c(1),
+    decimals = 1)%>%
+  fmt_number(
+    columns = "stats",
+    rows = c(7),
+    decimals = 2)
+stats_summary
+}
+
+pitch_locations <- function(pitch, velo, release_extend, release_height, hmove, vmove)
+{
+  if(pitch %in% c("FF", "FT","FC", "SI", "FA"))
+    {
+      sample <- all_pitches_all %>%
+        filter(pitch_type %in% c("FF", "FT","FC", "SI", "FA")) %>%
+        filter(!is.na(release_speed))%>%
+        filter(!is.na(release_extension))%>%
+        filter(!is.na(release_pos_z))%>%
+        filter(!is.na(pfx_x))%>%
+        filter(!is.na(pfx_z))
+      
+      sample$pfx_x <- sample$pfx_x * -12
+      sample$pfx_z <- sample$pfx_z * 12
+      
+      Dist <- mahalanobis(x = sample[,c("release_speed","release_extension","release_pos_z","pfx_x","pfx_z")], c(velo,release_extend,release_height,hmove,vmove), cov(sample[,c("release_speed","release_extension","release_pos_z","pfx_x","pfx_z")]))
+      sample$Dist <- Dist
+      sample$Dist <- round(sample$Dist,3)
+      sample <- sample[order(sample$Dist, decreasing=FALSE),]
+    }
+    else if(pitch %in% c("SL", "EP","CU", "KN", "KC"))
+    {
+      sample <- all_pitches_all %>%
+        filter(pitch_type %in% c("SL", "EP","CU", "KN", "KC")) %>%
+        filter(!is.na(release_speed))%>%
+        filter(!is.na(release_extension))%>%
+        filter(!is.na(release_pos_z))%>%
+        filter(!is.na(pfx_x))%>%
+        filter(!is.na(pfx_z))
+      
+      sample$pfx_x <- sample$pfx_x * -12
+      sample$pfx_z <- sample$pfx_z * 12
+      
+      Dist <- mahalanobis(x = sample[,c("pfx_x","pfx_z")], c(hmove,vmove), cov(sample[,c("pfx_x","pfx_z")]))
+      sample$Dist <- Dist
+      sample$Dist <- round(sample$Dist,3)
+      sample <- sample[order(sample$Dist, decreasing=FALSE),]
+    }
+    else
+    {
+      sample <- all_pitches_all %>%
+        filter(pitch_type %in% c("CH","CS","FO", "FS")) %>%
+        filter(!is.na(release_speed))%>%
+        filter(!is.na(release_extension))%>%
+        filter(!is.na(release_pos_z))%>%
+        filter(!is.na(pfx_x))%>%
+        filter(!is.na(pfx_z))
+      
+      sample$pfx_x <- sample$pfx_x * -12
+      sample$pfx_z <- sample$pfx_z * 12
+      
+      Dist <- mahalanobis(x = sample[,c("pfx_x","pfx_z")], c(hmove,vmove), cov(sample[,c("pfx_x","pfx_z")]))
+      sample$Dist <- Dist
+      sample$Dist <- round(sample$Dist,3)
+      sample <- sample[order(sample$Dist, decreasing=FALSE),]
+    }
+  sample_bip <- sample %>%
+    filter(!is.na(barrel))
+  sample_bip <- sample_bip[1:500,]
+  sample <- sample[1:1000,]
+  
+  topKzone <- 3.5
+  botKzone <- 1.6
+  inKzone <- -0.95
+  outKzone <- 0.95
+  kZone <- data.frame(
+    x=c(inKzone, inKzone, outKzone, outKzone, inKzone),
+    y=c(botKzone, topKzone, topKzone, botKzone, botKzone)
+  )
+
+  fit <- gam(whiff ~ s(plate_x,plate_z), family=binomial, data=sample)
+  plate_x <- seq(-1.5, 1.5, length.out=100)
+  plate_z <- seq(1, 4, length.out=100)
+  data.predict <- data.frame(plate_x = c(outer(plate_x, plate_z * 0 + 1)),
+                             plate_z = c(outer(plate_x * 0 + 1, plate_z)))
+  lp <- predict(fit, data.predict)
+  data.predict$Probability <- exp(lp) / (1 + exp(lp))
+  
+  # construct the plot V Oppo
+  whiff <- ggplot(kZone, aes(x, y)) +
+    theme_void() +
+    geom_tile(data=data.predict, 
+              aes(x=-plate_x, y=plate_z, fill= Probability)) +
+    scale_fill_distiller(palette = "Spectral") +
+    geom_path(lwd=1, col="black") +
+    coord_fixed()+labs(title="Whiffs")
+  
+  fit <- gam(barrel ~ s(plate_x,plate_z), family=binomial, data=sample_bip)
+  plate_x <- seq(-1.5, 1.5, length.out=100)
+  plate_z <- seq(1, 4, length.out=100)
+  data.predict <- data.frame(plate_x = c(outer(plate_x, plate_z * 0 + 1)),
+                             plate_z = c(outer(plate_x * 0 + 1, plate_z)))
+  lp <- predict(fit, data.predict)
+  data.predict$Probability <- exp(lp) / (1 + exp(lp))
+  
+  # construct the plot V Oppo
+  barrel <- ggplot(kZone, aes(x, y)) +
+    theme_void() +
+    geom_tile(data=data.predict, 
+              aes(x=-plate_x, y=plate_z, fill= Probability)) +
+    scale_fill_distiller(palette = "Spectral") +
+    geom_path(lwd=1, col="black") +
+    coord_fixed()+labs(title="Barrels")
+  
+  grid.arrange(
+    whiff,
+    barrel,
+    nrow = 1,
+    top = "",
+    bottom = ""
+  )
+}
+
+
+pitch_locations_value <- function(pitch, velo, release_extend, release_height, hmove, vmove, handedness)
+{
+  if(pitch %in% c("FF", "FT","FC", "SI", "FA"))
+  {
+    sample <- all_pitches_all %>%
+      filter(pitch_type %in% c("FF", "FT","FC", "SI", "FA")) %>%
+      filter(!is.na(release_speed))%>%
+      filter(!is.na(release_extension))%>%
+      filter(!is.na(release_pos_z))%>%
+      filter(!is.na(pfx_x))%>%
+      filter(!is.na(pfx_z))
+    
+    sample$pfx_x <- sample$pfx_x * -12
+    sample$pfx_z <- sample$pfx_z * 12
+    
+    if(handedness == "R")
+    {
+      sample <- sample %>%
+        filter(stand == "R")
+    }
+    else
+    {
+      sample <- sample %>%
+        filter(stand == "L") 
+    }
+    
+    Dist <- mahalanobis(x = sample[,c("release_speed","release_extension","release_pos_z","pfx_x","pfx_z")], c(velo,release_extend,release_height,hmove,vmove), cov(sample[,c("release_speed","release_extension","release_pos_z","pfx_x","pfx_z")]))
+    sample$Dist <- Dist
+    sample$Dist <- round(sample$Dist,3)
+    sample <- sample[order(sample$Dist, decreasing=FALSE),]
+  }
+  else if(pitch %in% c("SL", "EP","CU", "KN", "KC"))
+  {
+    sample <- all_pitches_all %>%
+      filter(pitch_type %in% c("SL", "EP","CU", "KN", "KC")) %>%
+      filter(!is.na(release_speed))%>%
+      filter(!is.na(release_extension))%>%
+      filter(!is.na(release_pos_z))%>%
+      filter(!is.na(pfx_x))%>%
+      filter(!is.na(pfx_z))
+    
+    sample$pfx_x <- sample$pfx_x * -12
+    sample$pfx_z <- sample$pfx_z * 12
+    
+    if(handedness == "R")
+    {
+      sample <- sample %>%
+        filter(stand == "R")
+    }
+    else
+    {
+      sample <- sample %>%
+        filter(stand == "L") 
+    }
+    
+    Dist <- mahalanobis(x = sample[,c("pfx_x","pfx_z")], c(hmove,vmove), cov(sample[,c("pfx_x","pfx_z")]))
+    sample$Dist <- Dist
+    sample$Dist <- round(sample$Dist,3)
+    sample <- sample[order(sample$Dist, decreasing=FALSE),]
+  }
+  else
+  {
+    sample <- all_pitches_all %>%
+      filter(pitch_type %in% c("CH","CS","FO", "FS")) %>%
+      filter(!is.na(release_speed))%>%
+      filter(!is.na(release_extension))%>%
+      filter(!is.na(release_pos_z))%>%
+      filter(!is.na(pfx_x))%>%
+      filter(!is.na(pfx_z))
+    
+    sample$pfx_x <- sample$pfx_x * -12
+    sample$pfx_z <- sample$pfx_z * 12
+    
+    if(handedness == "R")
+    {
+      sample <- sample %>%
+        filter(stand == "R")
+    }
+    else
+    {
+      sample <- sample %>%
+        filter(stand == "L") 
+    }
+    
+    Dist <- mahalanobis(x = sample[,c("pfx_x","pfx_z")], c(hmove,vmove), cov(sample[,c("pfx_x","pfx_z")]))
+    sample$Dist <- Dist
+    sample$Dist <- round(sample$Dist,3)
+    sample <- sample[order(sample$Dist, decreasing=FALSE),]
+  }
+  sample_bip <- sample %>%
+    filter(!is.na(barrel))
+  sample_bip <- sample_bip[1:500,]
+  sample <- sample[1:1000,]
+  
+  topKzone <- 3.5
+  botKzone <- 1.6
+  inKzone <- -0.95
+  outKzone <- 0.95
+  kZone <- data.frame(
+    x=c(inKzone, inKzone, outKzone, outKzone, inKzone),
+    y=c(botKzone, topKzone, topKzone, botKzone, botKzone)
+  )
+  
+  fit <- gam(whiff ~ s(plate_x,plate_z), family=binomial, data=sample)
+  plate_x <- seq(-1.5, 1.5, length.out=100)
+  plate_z <- seq(1, 4, length.out=100)
+  data.predict_whiff <- data.frame(plate_x = c(outer(plate_x, plate_z * 0 + 1)),
+                             plate_z = c(outer(plate_x * 0 + 1, plate_z)))
+  lp <- predict(fit, data.predict_whiff)
+  data.predict_whiff$Whiff <- exp(lp) / (1 + exp(lp))
+  
+  
+  fit <- gam(barrel ~ s(plate_x,plate_z), family=binomial, data=sample_bip)
+  plate_x <- seq(-1.5, 1.5, length.out=100)
+  plate_z <- seq(1, 4, length.out=100)
+  data.predict_barrel <- data.frame(plate_x = c(outer(plate_x, plate_z * 0 + 1)),
+                             plate_z = c(outer(plate_x * 0 + 1, plate_z)))
+  lp <- predict(fit, data.predict_barrel)
+  data.predict_barrel$Barrel <- exp(lp) / (1 + exp(lp))
+  
+  data.predict <- left_join(data.predict_whiff,data.predict_barrel)
+  data.predict$Value <- data.predict$Whiff - data.predict$Barrel
+  
+  # construct the plot V Oppo
+  ggplot(kZone, aes(x, y)) +
+    theme_void() +
+    geom_tile(data=data.predict, 
+              aes(x=-plate_x, y=plate_z, fill= Value),show.legend = FALSE) +
+    scale_fill_gradient2(low = "red",mid = "white", high = "green") +
+    geom_path(lwd=1, col="black") +
+    coord_fixed()+labs(title="Location Value") +
+    geom_contour(data=data.predict,
+                 aes(x=-plate_x, y=plate_z,z = Value)
+                 ,breaks = .1, colour = "darkgreen") +
+    geom_contour(data=data.predict,
+                 aes(x=-plate_x, y=plate_z,z = Value)
+                 ,breaks = -0.05, colour = "darkred")
+  
+  
+}
+    
+```
+
+# 2021 Stats and Pitch Characteristics
+&nbsp;
+&nbsp;
+```{r stats, echo = FALSE, warning=FALSE}
+create_stat_report("Mark Appel")
+
+pitches <- data.frame('Pitch_Type' = c("FF","SL","CH"),
+                      "Velocity" = c(92.4,81.4,85.8),
+                      "Release_Extension" = c(6.92,6.63,6.66),
+                      "Release_Height" = c(round(72.8/12,2),round(71.2/12,2),round(70.6/12,2)),
+                      "Horizontal_Movement" = c(12.8,-0.42,13.52),
+                      "Vertical_Movement" = c(12.88,-1.73,7.59)
+)
+```
+<br>
+<center>
+<video width="640" height="480" controls>
+  <source src="appelpunchouts.mp4" type="video/mp4">
+</video>
+</center>
+<br>
+```{r characteristics, echo = FALSE, warning=FALSE}
+gt(pitches)  %>%
+        tab_header(
+            title = "Pitch Summary",
+            subtitle = md("&nbsp;")) %>%
+    tab_options(
+    heading.background.color = "#44b4e1",
+    column_labels.background.color = "#35316a",
+    heading.title.font.weight = "bold",
+              heading.title.font.size = pct(200))  %>%
+        cols_label(
+          Pitch_Type = "Pitch Type",
+          Release_Extension = "Release Extension",
+          Release_Height = "Release Height",
+          Horizontal_Movement = "Horizontal Movement",
+          Vertical_Movement = "Vertical Movement"
+        )
+
+```
+------
+
+## Mechanics Side View Progression
+
+<center>
+<video width="640" height="480" controls>
+  <source src="appelside.mp4" type="video/mp4">
+</video>
+</center>
+<br>
+
+## Mechanics Front View Progression
+
+<center>
+<video width="640" height="480" controls>
+  <source src="appelfront.mp4" type="video/mp4">
+</video>
+</center>
+<br>
+
+------
+
+# Pitch Comps
+Using data since 2015, we were able to generate a list of the most similar pitches to your pitches as they currently stand based on a number of different factors. These include:
+
+* Velocity
+* Release Extension
+* Release Height
+* Movement Profile
+<br>
+
+------
+
+### Fastball
+&nbsp;
+&nbsp;
+```{r pitch, echo = FALSE, warning=FALSE}
+test <- pitch_comps(pitches[1,"Pitch_Type"],pitches[1,"Velocity"],pitches[1,"Release_Extension"],pitches[1,"Release_Height"],pitches[1,"Horizontal_Movement"],pitches[1,"Vertical_Movement"])
+
+pitch <- data.frame("player_name" = "Mark Appel",
+                    "pitch_type" = "FF",
+                    "Velocity" = pitches[1,"Velocity"],
+                    "release_extension" = pitches[1,"Release_Extension"], 
+                    "Release_z" = pitches[1,"Release_Height"]
+                    ,"pfx_x" = pitches[1,"Horizontal_Movement"]
+                    ,"pfx_z" = pitches[1,"Vertical_Movement"]
+                    , "Whiff" = NA
+                    ,"Barrel" = NA
+                    , "xRV_plus" = NA
+                    )
+
+test <- rbind(pitch,test[,c("player_name","pitch_type","Velocity","release_extension","Release_z","pfx_x","pfx_z", "Whiff","Barrel", "xRV_plus")])
+
+gt(test[1:6,c("player_name","pitch_type","Velocity","release_extension","Release_z","pfx_x","pfx_z", "Whiff","Barrel", "xRV_plus")])  %>%
+        tab_header(
+            title = "Most Similar Pitches",
+            subtitle = md("&nbsp;")) %>%
+    tab_options(
+    heading.background.color = "#44b4e1",
+    column_labels.background.color = "#35316a",
+    heading.title.font.weight = "bold",
+              heading.title.font.size = pct(200)) %>%
+        cols_label(
+            player_name = "Pitcher",
+            pitch_type = "Pitch Type",
+            xRV_plus = "xRV+",
+            release_extension = "Release Extension",
+            Release_z = "Release Height",
+            pfx_x = "Horizontal Movement",
+            pfx_z = "Vertical Movement"
+        ) %>%
+  fmt_percent(
+    columns = c("Whiff","Barrel"),
+    decimals = 1) %>%
+  tab_style(
+    style = list(
+      cell_fill(color = "lightgray"),
+      cell_text(weight = "bold")
+      ),
+    locations = cells_body(
+      rows = 1
+    )
+  )
+```
+<br>
+
+* There aren't many pitchers with fastballs similar to yours
+<br>
+* We need to determine the best route for you to take depending on what feels more comfortable/easier for you
+<br>
+* Path One: Lean into the sinker and try to add more run onto the pitch (15 H/12 V)
+<br>
+* Path Two: Throw a high vert rising fastball add more vertical break and try to get less run (10 H/15+ V)
+
+------
+
+### Slider
+&nbsp;
+&nbsp;
+
+```{r pitch2, echo = FALSE, warning=FALSE}
+test <- pitch_comps(pitches[2,"Pitch_Type"],pitches[2,"Velocity"],pitches[2,"Release_Extension"],pitches[2,"Release_Height"],pitches[2,"Horizontal_Movement"],pitches[2,"Vertical_Movement"])
+
+pitch <- data.frame("player_name" = "Mark Appel",
+                    "pitch_type" = pitches[2,"Pitch_Type"],
+                    "Velocity" = pitches[2,"Velocity"],
+                    "release_extension" = pitches[2,"Release_Extension"], 
+                    "Release_z" = pitches[2,"Release_Height"]
+                    ,"pfx_x" = pitches[2,"Horizontal_Movement"]
+                    ,"pfx_z" = pitches[2,"Vertical_Movement"]
+                    , "Whiff" = NA
+                    ,"Barrel" = NA
+                    , "xRV_plus" = NA
+                    )
+
+
+test <- rbind(pitch,test[,c("player_name","pitch_type","Velocity","release_extension","Release_z","pfx_x","pfx_z", "Whiff","Barrel", "xRV_plus")])
+
+gt(test[1:6,c("player_name","pitch_type","Velocity","release_extension","Release_z","pfx_x","pfx_z", "Whiff","Barrel", "xRV_plus")])  %>%
+        tab_header(
+            title = "Most Similar Pitches",
+            subtitle = md("&nbsp;")) %>%
+    tab_options(
+    heading.background.color = "#44b4e1",
+    column_labels.background.color = "#35316a",
+    heading.title.font.weight = "bold",
+              heading.title.font.size = pct(200)) %>%
+        cols_label(
+            player_name = "Pitcher",
+            pitch_type = "Pitch Type",
+            xRV_plus = "xRV+",
+            release_extension = "Release Extension",
+            Release_z = "Release Height",
+            pfx_x = "Horizontal Movement",
+            pfx_z = "Vertical Movement"
+        ) %>%
+  fmt_percent(
+    columns = c("Whiff","Barrel"),
+    decimals = 1) %>%
+  tab_style(
+    style = list(
+      cell_fill(color = "lightgray"),
+      cell_text(weight = "bold")
+      ),
+    locations = cells_body(
+      rows = 1
+    ))
+```
+<br>
+
+* If we include velocity your slider's best comps are left handed breaking balls
+<br>
+* First goal for this pitch is to throw it harder
+<br>
+* Second goal is to add more break - vertical versus horizontal will be determined by fastball approach
+
+------
+
+### Change-Up
+&nbsp;
+&nbsp;
+
+```{r pitch3, echo = FALSE, warning=FALSE}
+test <- pitch_comps(pitches[3,"Pitch_Type"],pitches[3,"Velocity"],pitches[3,"Release_Extension"],pitches[3,"Release_Height"],pitches[3,"Horizontal_Movement"],pitches[3,"Vertical_Movement"])
+
+pitch <- data.frame("player_name" = "Mark Appel",
+                    "pitch_type" = pitches[3,"Pitch_Type"],
+                    "Velocity" = pitches[3,"Velocity"],
+                    "release_extension" = pitches[3,"Release_Extension"], 
+                    "Release_z" = pitches[3,"Release_Height"]
+                    ,"pfx_x" = pitches[3,"Horizontal_Movement"]
+                    ,"pfx_z" = pitches[3,"Vertical_Movement"]
+                    , "Whiff" = NA
+                    ,"Barrel" = NA
+                    , "xRV_plus" = NA
+                    )
+
+test <- rbind(pitch,test[,c("player_name","pitch_type","Velocity","release_extension","Release_z","pfx_x","pfx_z", "Whiff","Barrel", "xRV_plus")])
+
+gt(test[1:6,c("player_name","pitch_type","Velocity","release_extension","Release_z","pfx_x","pfx_z", "Whiff","Barrel", "xRV_plus")])  %>%
+        tab_header(
+            title = "Most Similar Pitches",
+            subtitle = md("&nbsp;")) %>%
+    tab_options(
+    heading.background.color = "#44b4e1",
+    column_labels.background.color = "#35316a",
+    heading.title.font.weight = "bold",
+              heading.title.font.size = pct(200)) %>%
+        cols_label(
+            player_name = "Pitcher",
+            pitch_type = "Pitch Type",
+            xRV_plus = "xRV+",
+            release_extension = "Release Extension",
+            Release_z = "Release Height",
+            pfx_x = "Horizontal Movement",
+            pfx_z = "Vertical Movement"
+        ) %>%
+  fmt_percent(
+    columns = c("Whiff","Barrel"),
+    decimals = 1) %>%
+  tab_style(
+    style = list(
+      cell_fill(color = "lightgray"),
+      cell_text(weight = "bold")
+      ),
+    locations = cells_body(
+      rows = 1
+    )
+  )
+```
+<br>
+
+* This actually has the makings of a good pitch we just need to rework a fastball that can build off it
+<br>
+* Gibson could be a good pitcher type to mirror
+<br>
+* His main fastball is a sinker that isnt too far from your current fastball
+
+------
+
+
+## Final Notes
+
+Overall, we will be looking to really determine the path you want to take as a pitcher. We need to decide between a high vert four seam fastball pitcher or a sinker heavy approach. The slider needs to be thrown harder and ideally will add more depth but depending on fastball approach the design of this pitch may change. The change-up has a good design and using Kyle Gibson as a guide it should pair well with a sinking fastball approach.
+<br>
+Once we are able to generate a pitch profile approach and determine set goals based on what feels comfortable we can generate location charts like the ones below for your current pitches which will help us to find areas to target for success.
+<br>
+```{r final locations, echo = FALSE, warning=FALSE, message=FALSE}
+ff <- pitch_locations_value(pitches[1,"Pitch_Type"],pitches[1,"Velocity"],pitches[1,"Release_Extension"],pitches[1,"Release_Height"],pitches[1,"Horizontal_Movement"],pitches[1,"Vertical_Movement"],"L") +labs(title="Fastball v Left")
+
+sl <- pitch_locations_value(pitches[2,"Pitch_Type"],pitches[2,"Velocity"],pitches[2,"Release_Extension"],pitches[2,"Release_Height"],pitches[2,"Horizontal_Movement"],pitches[2,"Vertical_Movement"], "L") +labs(title="Curve ball v Left")
+
+ch <- pitch_locations_value(pitches[3,"Pitch_Type"],pitches[3,"Velocity"],pitches[3,"Release_Extension"],pitches[3,"Release_Height"],pitches[3,"Horizontal_Movement"],pitches[3,"Vertical_Movement"],"L") +labs(title="Change-up v Left")
+
+ff_r <- pitch_locations_value(pitches[1,"Pitch_Type"],pitches[1,"Velocity"],pitches[1,"Release_Extension"],pitches[1,"Release_Height"],pitches[1,"Horizontal_Movement"],pitches[1,"Vertical_Movement"],"R") +labs(title="Fastball v Right")
+
+Sl_r <- pitch_locations_value(pitches[2,"Pitch_Type"],pitches[2,"Velocity"],pitches[2,"Release_Extension"],pitches[2,"Release_Height"],pitches[2,"Horizontal_Movement"],pitches[2,"Vertical_Movement"], "R") +labs(title="Curve ball v Right")
+
+ch_r <- pitch_locations_value(pitches[3,"Pitch_Type"],pitches[3,"Velocity"],pitches[3,"Release_Extension"],pitches[3,"Release_Height"],pitches[3,"Horizontal_Movement"],pitches[3,"Vertical_Movement"],"R") +labs(title="Change-up v Right")
+
+grid.arrange(
+  ff,
+  sl,
+  ch,
+  ff_r,
+  Sl_r,
+  ch_r,
+  nrow = 2,
+  top = "",
+  bottom = ""
+)
+
+```
