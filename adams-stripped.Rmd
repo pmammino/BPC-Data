@@ -1,5 +1,5 @@
 ---
-title: "Mike Adams Pitch Report"
+title: "Joe Random Pitch Report"
 output:
   html_document:
     css: styles.css
@@ -312,27 +312,9 @@ pitch_locations <- function(pitch, velo, release_extend, release_height, hmove, 
     geom_path(lwd=1, col="black") +
     coord_fixed()+labs(title="Barrels")
   
-  fit <- gam(woba_value ~ s(plate_x,plate_z), data=sample_swing)
-  plate_x <- seq(-1.05, 1.05, length.out=100)
-  plate_z <- seq(1.2, 3.9, length.out=100)
-  data.predict <- data.frame(plate_x = c(outer(plate_x, plate_z * 0 + 1)),
-                             plate_z = c(outer(plate_x * 0 + 1, plate_z)))
-  lp <- predict(fit, data.predict)
-  data.predict$Probability <- lp
-  
-  # construct the plot V Oppo
-  woba <- ggplot(kZone, aes(x, y)) +
-    theme_void() +
-    geom_tile(data=data.predict, 
-              aes(x=-plate_x, y=plate_z, fill= Probability),show.legend = FALSE) +
-    scale_fill_fermenter(palette = "RdYlGn") + 
-    geom_path(lwd=1, col="black") +
-    coord_fixed()+labs(title="wOBA")
-  
   grid.arrange(
     whiff,
     barrel,
-    woba,
     nrow = 1,
     top = glue('Pitches v {handedness}HH'),
     bottom = ""
@@ -459,7 +441,7 @@ pitch_locations_value <- function(pitch, velo, release_extend, release_height, h
   data.predict_barrel <- data.frame(plate_x = c(outer(plate_x, plate_z * 0 + 1)),
                              plate_z = c(outer(plate_x * 0 + 1, plate_z)))
   lp <- predict(fit, data.predict_barrel)
-  data.predict_barrel$Barrel <- exp(lp) / (1 + exp(lp))
+  data.predict_barrel$Barrel <- (exp(lp) / (1 + exp(lp))) * .5
   
   data.predict <- left_join(data.predict_whiff,data.predict_barrel)
   data.predict$Value <- data.predict$Whiff - data.predict$Barrel
@@ -488,12 +470,12 @@ pitch_locations_value <- function(pitch, velo, release_extend, release_height, h
 
 <br>
 ```{r stats, echo = FALSE, warning=FALSE}
-pitches <- data.frame('Pitch_Type' = c("FF","SL","CH"),
-                      "Velocity" = c(95,73.3,73.9),
-                      "Release_Extension" = c(5.69,5.49,5.40),
-                      "Release_Height" = c(round(70.6/12,2),round(68.8/12,2),round(66.4/12,2)),
-                      "Horizontal_Movement" = c(10.8,-9.5	,17.3),
-                      "Vertical_Movement" = c(15.7,0.2,8.7)
+pitches <- data.frame('Pitch_Type' = c("FF","FT","SL","CU","CH"),
+                      "Velocity" = c(90,88,81,78,83),
+                      "Release_Extension" = c(6,6,6,6,6),
+                      "Release_Height" = c(round(5.86,2),round(5.86,2),round(5.86,2),round(5.86,2),round(5.86,2)),
+                      "Horizontal_Movement" = c(10,12,-12,-5,15),
+                      "Vertical_Movement" = c(17,14,-2,-5,10)
 )
 ```
 
@@ -501,7 +483,7 @@ pitches <- data.frame('Pitch_Type' = c("FF","SL","CH"),
 gt(pitches)  %>%
         tab_header(
             title = "Pitch Summary",
-            subtitle = md("&nbsp;")) %>%
+            subtitle = "Joe Random") %>%
     tab_options(
     heading.background.color = "#44b4e1",
     column_labels.background.color = "#35316a",
@@ -526,16 +508,19 @@ Using data since 2015, we were able to generate a list of the most similar pitch
 * Release Height
 * Movement Profile
 <br>
+We pulled the 1,000 most similar pitches thrown since 2015 and generated a heat map of the Swinging Strike Rate by location for those pitches most similar to yours. Additionally, we took the 500 most similar pitches that were put in play and built a heat map for barrels. If you are not familiar with barrels, it is a measure of ideal exit velocity/launch angle combinations. When determining where to focus on locating your pitches, refer to these heat maps.
+<br>
 
 ------
 
 ### Fastball
-&nbsp;
-&nbsp;
+
+<br>
+
 ```{r pitch, echo = FALSE, warning=FALSE}
 test <- pitch_comps(pitches[1,"Pitch_Type"],pitches[1,"Velocity"],pitches[1,"Release_Extension"],pitches[1,"Release_Height"],pitches[1,"Horizontal_Movement"],pitches[1,"Vertical_Movement"])
 
-pitch <- data.frame("player_name" = "Mike Adams",
+pitch <- data.frame("player_name" = "Joe Random",
                     "pitch_type" = "FF",
                     "Velocity" = pitches[1,"Velocity"],
                     "release_extension" = pitches[1,"Release_Extension"], 
@@ -552,7 +537,7 @@ test <- rbind(pitch,test[,c("player_name","pitch_type","Velocity","release_exten
 gt(test[1:6,c("player_name","pitch_type","Velocity","release_extension","Release_z","pfx_x","pfx_z", "Whiff","Barrel", "xRV_plus")])  %>%
         tab_header(
             title = "Most Similar Pitches",
-            subtitle = md("&nbsp;")) %>%
+            subtitle = "Joe Random") %>%
     tab_options(
     heading.background.color = "#44b4e1",
     column_labels.background.color = "#35316a",
@@ -580,23 +565,96 @@ gt(test[1:6,c("player_name","pitch_type","Velocity","release_extension","Release
     )
   )
 ```
+<br>
+<br>
+
+```{r locations, echo = FALSE, warning=FALSE}
+pitch_locations(pitches[1,"Pitch_Type"],pitches[1,"Velocity"],pitches[1,"Release_Extension"],pitches[1,"Release_Height"],pitches[1,"Horizontal_Movement"],pitches[1,"Vertical_Movement"],"L")
+pitch_locations(pitches[1,"Pitch_Type"],pitches[1,"Velocity"],pitches[1,"Release_Extension"],pitches[1,"Release_Height"],pitches[1,"Horizontal_Movement"],pitches[1,"Vertical_Movement"],"R")
+```
+<br>
 
 ------
 
-### Slider
-&nbsp;
-&nbsp;
+
+### Two Seam Fastball
+
+<br>
 
 ```{r pitch2, echo = FALSE, warning=FALSE}
 test <- pitch_comps(pitches[2,"Pitch_Type"],pitches[2,"Velocity"],pitches[2,"Release_Extension"],pitches[2,"Release_Height"],pitches[2,"Horizontal_Movement"],pitches[2,"Vertical_Movement"])
 
-pitch <- data.frame("player_name" = "Mike Adams",
-                    "pitch_type" = pitches[2,"Pitch_Type"],
+pitch <- data.frame("player_name" = "Joe Random",
+                    "pitch_type" = "FF",
                     "Velocity" = pitches[2,"Velocity"],
                     "release_extension" = pitches[2,"Release_Extension"], 
                     "Release_z" = pitches[2,"Release_Height"]
                     ,"pfx_x" = pitches[2,"Horizontal_Movement"]
                     ,"pfx_z" = pitches[2,"Vertical_Movement"]
+                    , "Whiff" = NA
+                    ,"Barrel" = NA
+                    , "xRV_plus" = NA
+                    )
+
+test <- rbind(pitch,test[,c("player_name","pitch_type","Velocity","release_extension","Release_z","pfx_x","pfx_z", "Whiff","Barrel", "xRV_plus")])
+
+gt(test[1:6,c("player_name","pitch_type","Velocity","release_extension","Release_z","pfx_x","pfx_z", "Whiff","Barrel", "xRV_plus")])  %>%
+        tab_header(
+            title = "Most Similar Pitches",
+            subtitle = "Joe Random") %>%
+    tab_options(
+    heading.background.color = "#44b4e1",
+    column_labels.background.color = "#35316a",
+    heading.title.font.weight = "bold",
+              heading.title.font.size = pct(200)) %>%
+        cols_label(
+            player_name = "Pitcher",
+            pitch_type = "Pitch Type",
+            xRV_plus = "xRV+",
+            release_extension = "Release Extension",
+            Release_z = "Release Height",
+            pfx_x = "Horizontal Movement",
+            pfx_z = "Vertical Movement"
+        ) %>%
+  fmt_percent(
+    columns = c("Whiff","Barrel"),
+    decimals = 1) %>%
+  tab_style(
+    style = list(
+      cell_fill(color = "lightgray"),
+      cell_text(weight = "bold")
+      ),
+    locations = cells_body(
+      rows = 1
+    )
+  )
+```
+<br>
+<br>
+
+```{r locations2, echo = FALSE, warning=FALSE}
+pitch_locations(pitches[2,"Pitch_Type"],pitches[2,"Velocity"],pitches[2,"Release_Extension"],pitches[2,"Release_Height"],pitches[2,"Horizontal_Movement"],pitches[2,"Vertical_Movement"],"L")
+pitch_locations(pitches[2,"Pitch_Type"],pitches[2,"Velocity"],pitches[2,"Release_Extension"],pitches[2,"Release_Height"],pitches[2,"Horizontal_Movement"],pitches[2,"Vertical_Movement"],"R")
+```
+<br>
+
+------
+
+### Slider
+
+<br>
+
+
+```{r pitch3, echo = FALSE, warning=FALSE}
+test <- pitch_comps(pitches[3,"Pitch_Type"],pitches[3,"Velocity"],pitches[3,"Release_Extension"],pitches[3,"Release_Height"],pitches[3,"Horizontal_Movement"],pitches[3,"Vertical_Movement"])
+
+pitch <- data.frame("player_name" = "Joe Random",
+                    "pitch_type" = pitches[3,"Pitch_Type"],
+                    "Velocity" = pitches[3,"Velocity"],
+                    "release_extension" = pitches[3,"Release_Extension"], 
+                    "Release_z" = pitches[3,"Release_Height"]
+                    ,"pfx_x" = pitches[3,"Horizontal_Movement"]
+                    ,"pfx_z" = pitches[3,"Vertical_Movement"]
                     , "Whiff" = NA
                     ,"Barrel" = NA
                     , "xRV_plus" = NA
@@ -608,7 +666,7 @@ test <- rbind(pitch,test[,c("player_name","pitch_type","Velocity","release_exten
 gt(test[1:6,c("player_name","pitch_type","Velocity","release_extension","Release_z","pfx_x","pfx_z", "Whiff","Barrel", "xRV_plus")])  %>%
         tab_header(
             title = "Most Similar Pitches",
-            subtitle = md("&nbsp;")) %>%
+            subtitle = "Joe Random") %>%
     tab_options(
     heading.background.color = "#44b4e1",
     column_labels.background.color = "#35316a",
@@ -636,22 +694,96 @@ gt(test[1:6,c("player_name","pitch_type","Velocity","release_extension","Release
     ))
 ```
 
+<br>
+<br>
+
+```{r locations3, echo = FALSE, warning=FALSE}
+pitch_locations(pitches[3,"Pitch_Type"],pitches[3,"Velocity"],pitches[3,"Release_Extension"],pitches[3,"Release_Height"],pitches[3,"Horizontal_Movement"],pitches[3,"Vertical_Movement"],"L")
+pitch_locations(pitches[3,"Pitch_Type"],pitches[3,"Velocity"],pitches[3,"Release_Extension"],pitches[3,"Release_Height"],pitches[3,"Horizontal_Movement"],pitches[3,"Vertical_Movement"],"R")
+```
+
+<br>
+------
+
+### Curveball
+
+<br>
+
+
+```{r pitch4, echo = FALSE, warning=FALSE}
+test <- pitch_comps(pitches[4,"Pitch_Type"],pitches[4,"Velocity"],pitches[4,"Release_Extension"],pitches[4,"Release_Height"],pitches[4,"Horizontal_Movement"],pitches[4,"Vertical_Movement"])
+
+pitch <- data.frame("player_name" = "Joe Random",
+                    "pitch_type" = pitches[4,"Pitch_Type"],
+                    "Velocity" = pitches[4,"Velocity"],
+                    "release_extension" = pitches[4,"Release_Extension"], 
+                    "Release_z" = pitches[4,"Release_Height"]
+                    ,"pfx_x" = pitches[4,"Horizontal_Movement"]
+                    ,"pfx_z" = pitches[4,"Vertical_Movement"]
+                    , "Whiff" = NA
+                    ,"Barrel" = NA
+                    , "xRV_plus" = NA
+                    )
+
+
+test <- rbind(pitch,test[,c("player_name","pitch_type","Velocity","release_extension","Release_z","pfx_x","pfx_z", "Whiff","Barrel", "xRV_plus")])
+
+gt(test[1:6,c("player_name","pitch_type","Velocity","release_extension","Release_z","pfx_x","pfx_z", "Whiff","Barrel", "xRV_plus")])  %>%
+        tab_header(
+            title = "Most Similar Pitches",
+            subtitle = "Joe Random") %>%
+    tab_options(
+    heading.background.color = "#44b4e1",
+    column_labels.background.color = "#35316a",
+    heading.title.font.weight = "bold",
+              heading.title.font.size = pct(200)) %>%
+        cols_label(
+            player_name = "Pitcher",
+            pitch_type = "Pitch Type",
+            xRV_plus = "xRV+",
+            release_extension = "Release Extension",
+            Release_z = "Release Height",
+            pfx_x = "Horizontal Movement",
+            pfx_z = "Vertical Movement"
+        ) %>%
+  fmt_percent(
+    columns = c("Whiff","Barrel"),
+    decimals = 1) %>%
+  tab_style(
+    style = list(
+      cell_fill(color = "lightgray"),
+      cell_text(weight = "bold")
+      ),
+    locations = cells_body(
+      rows = 1
+    ))
+```
+
+<br>
+<br>
+
+```{r locations4, echo = FALSE, warning=FALSE}
+pitch_locations(pitches[4,"Pitch_Type"],pitches[4,"Velocity"],pitches[4,"Release_Extension"],pitches[4,"Release_Height"],pitches[4,"Horizontal_Movement"],pitches[4,"Vertical_Movement"],"L")
+pitch_locations(pitches[4,"Pitch_Type"],pitches[4,"Velocity"],pitches[4,"Release_Extension"],pitches[4,"Release_Height"],pitches[4,"Horizontal_Movement"],pitches[4,"Vertical_Movement"],"R")
+```
+
+<br>
 ------
 
 ### Change-Up
-&nbsp;
-&nbsp;
+<br>
+<br>
 
-```{r pitch3, echo = FALSE, warning=FALSE}
-test <- pitch_comps(pitches[3,"Pitch_Type"],pitches[3,"Velocity"],pitches[3,"Release_Extension"],pitches[3,"Release_Height"],pitches[3,"Horizontal_Movement"],pitches[3,"Vertical_Movement"])
+```{r pitch5, echo = FALSE, warning=FALSE}
+test <- pitch_comps(pitches[5,"Pitch_Type"],pitches[5,"Velocity"],pitches[5,"Release_Extension"],pitches[5,"Release_Height"],pitches[5,"Horizontal_Movement"],pitches[5,"Vertical_Movement"])
 
-pitch <- data.frame("player_name" = "Mike Adams",
-                    "pitch_type" = pitches[3,"Pitch_Type"],
-                    "Velocity" = pitches[3,"Velocity"],
-                    "release_extension" = pitches[3,"Release_Extension"], 
-                    "Release_z" = pitches[3,"Release_Height"]
-                    ,"pfx_x" = pitches[3,"Horizontal_Movement"]
-                    ,"pfx_z" = pitches[3,"Vertical_Movement"]
+pitch <- data.frame("player_name" = "Joe Random",
+                    "pitch_type" = pitches[5,"Pitch_Type"],
+                    "Velocity" = pitches[5,"Velocity"],
+                    "release_extension" = pitches[5,"Release_Extension"], 
+                    "Release_z" = pitches[5,"Release_Height"]
+                    ,"pfx_x" = pitches[5,"Horizontal_Movement"]
+                    ,"pfx_z" = pitches[5,"Vertical_Movement"]
                     , "Whiff" = NA
                     ,"Barrel" = NA
                     , "xRV_plus" = NA
@@ -662,7 +794,7 @@ test <- rbind(pitch,test[,c("player_name","pitch_type","Velocity","release_exten
 gt(test[1:6,c("player_name","pitch_type","Velocity","release_extension","Release_z","pfx_x","pfx_z", "Whiff","Barrel", "xRV_plus")])  %>%
         tab_header(
             title = "Most Similar Pitches",
-            subtitle = md("&nbsp;")) %>%
+            subtitle = "Joe Random") %>%
     tab_options(
     heading.background.color = "#44b4e1",
     column_labels.background.color = "#35316a",
@@ -691,53 +823,12 @@ gt(test[1:6,c("player_name","pitch_type","Velocity","release_extension","Release
   )
 ```
 
-------
-
-------
-
-# Ideal Pitch Locations
 <br>
-We pulled the 1,000 most similar pitches thrown since 2015 and generated a heat map of the Swinging Strike Rate by location for those pitches most similar to yours. Additionally, we took the 500 most similar pitches that were put in play and built a heat map for barrels. If you are not familiar with barrels, it is a measure of ideal exit velocity/launch angle combinations. When determining where to focus on locating your pitches, refer to these heat maps.
 <br>
 
-# Fastballs (Based off 2021 averages)
-<br>
-![Fastball Locations](adams-fast.png)
-<br>
-
-```{r locations, echo = FALSE, warning=FALSE}
-pitch_locations(pitches[1,"Pitch_Type"],pitches[1,"Velocity"],pitches[1,"Release_Extension"],pitches[1,"Release_Height"],pitches[1,"Horizontal_Movement"],pitches[1,"Vertical_Movement"],"L")
-pitch_locations(pitches[1,"Pitch_Type"],pitches[1,"Velocity"],pitches[1,"Release_Extension"],pitches[1,"Release_Height"],pitches[1,"Horizontal_Movement"],pitches[1,"Vertical_Movement"],"R")
-```
-<br>
-
-------
-
-
-# Slider (Based off 2021 averages)
-<br>
-![Breaking Locations](adams-bb.png)
-<br>
-
-
-```{r locations2, echo = FALSE, warning=FALSE}
-pitch_locations(pitches[2,"Pitch_Type"],pitches[2,"Velocity"],pitches[2,"Release_Extension"],pitches[2,"Release_Height"],pitches[2,"Horizontal_Movement"],pitches[2,"Vertical_Movement"],"L")
-pitch_locations(pitches[2,"Pitch_Type"],pitches[2,"Velocity"],pitches[2,"Release_Extension"],pitches[2,"Release_Height"],pitches[2,"Horizontal_Movement"],pitches[2,"Vertical_Movement"],"R")
-```
-
-<br>
-
-------
-
-
-# Change-Up (Based off 2021 averages)
-<br>
-![Changeup Locations](adams-ch.png)
-<br>
-
-```{r locations3, echo = FALSE, warning=FALSE}
-pitch_locations(pitches[3,"Pitch_Type"],pitches[3,"Velocity"],pitches[3,"Release_Extension"],pitches[3,"Release_Height"],pitches[3,"Horizontal_Movement"],pitches[3,"Vertical_Movement"],"L")
-pitch_locations(pitches[3,"Pitch_Type"],pitches[3,"Velocity"],pitches[3,"Release_Extension"],pitches[3,"Release_Height"],pitches[3,"Horizontal_Movement"],pitches[3,"Vertical_Movement"],"R")
+```{r locations5, echo = FALSE, warning=FALSE}
+pitch_locations(pitches[5,"Pitch_Type"],pitches[5,"Velocity"],pitches[5,"Release_Extension"],pitches[5,"Release_Height"],pitches[5,"Horizontal_Movement"],pitches[5,"Vertical_Movement"],"L")
+pitch_locations(pitches[5,"Pitch_Type"],pitches[5,"Velocity"],pitches[5,"Release_Extension"],pitches[5,"Release_Height"],pitches[5,"Horizontal_Movement"],pitches[5,"Vertical_Movement"],"R")
 ```
 <br>
 
@@ -750,24 +841,36 @@ pitch_locations(pitches[3,"Pitch_Type"],pitches[3,"Velocity"],pitches[3,"Release
 Based off the overall movement profile of your pitches here are what we believe are the areas you should be attacking with each of your pitches versus both left and right handed hitters. The green areas are location where you are likely to get a swing a miss than allow a barrel. The outlined green area is the whiff zone and the red outlined areas are the danger zones to avoid.
 
 ```{r final locations, echo = FALSE, warning=FALSE, message=FALSE}
-ff <- pitch_locations_value("FF", 95,5.69,70.6/12,10.8,15.7,"L") +labs(title="Fastball v Left")
+ff <- pitch_locations_value(pitches[1,"Pitch_Type"],pitches[1,"Velocity"],pitches[1,"Release_Extension"],pitches[1,"Release_Height"],pitches[1,"Horizontal_Movement"],pitches[1,"Vertical_Movement"],"L") +labs(title="Fastball v Left")
 
-sl <- pitch_locations_value("SL", 83.3,5.49,68.8/12,-9.5,0.2, "L") +labs(title="Slider v Left")
+ft <- pitch_locations_value(pitches[3,"Pitch_Type"],pitches[3,"Velocity"],pitches[3,"Release_Extension"],pitches[3,"Release_Height"],pitches[3,"Horizontal_Movement"],pitches[3,"Vertical_Movement"],"L") +labs(title="Two Seam v Left")
 
-ch <- pitch_locations_value("CH", 83.9,5.40,66.4/12,17.3,8.7,"L") +labs(title="Change-up v Left")
+sl <- pitch_locations_value(pitches[2,"Pitch_Type"],pitches[2,"Velocity"],pitches[2,"Release_Extension"],pitches[2,"Release_Height"],pitches[2,"Horizontal_Movement"],pitches[2,"Vertical_Movement"], "L") +labs(title="Slider v Left")
 
-ff_r <- pitch_locations_value("FF", 95,5.69,70.6/12,10.8,15.7,"R") +labs(title="Fastball v Right")
+cu <- pitch_locations_value(pitches[4,"Pitch_Type"],pitches[4,"Velocity"],pitches[4,"Release_Extension"],pitches[4,"Release_Height"],pitches[4,"Horizontal_Movement"],pitches[4,"Vertical_Movement"],"L") +labs(title="Curveball v Left")
 
-Sl_r <- pitch_locations_value("SL", 83.3,5.49,68.8/12,-9.5,0.2, "R") +labs(title="Slider v Right")
+ch <- pitch_locations_value(pitches[5,"Pitch_Type"],pitches[5,"Velocity"],pitches[5,"Release_Extension"],pitches[5,"Release_Height"],pitches[5,"Horizontal_Movement"],pitches[5,"Vertical_Movement"],"L") +labs(title="Change-up v Left")
 
-ch_r <- pitch_locations_value("CH", 83.9,5.40,66.4/12,17.3,8.7,"R") +labs(title="Change-up v Right")
+ff_r <- pitch_locations_value(pitches[1,"Pitch_Type"],pitches[1,"Velocity"],pitches[1,"Release_Extension"],pitches[1,"Release_Height"],pitches[1,"Horizontal_Movement"],pitches[1,"Vertical_Movement"],"R") +labs(title="Fastball v Right")
+
+ft_r <- pitch_locations_value(pitches[2,"Pitch_Type"],pitches[2,"Velocity"],pitches[2,"Release_Extension"],pitches[2,"Release_Height"],pitches[2,"Horizontal_Movement"],pitches[2,"Vertical_Movement"],"R") +labs(title="Two Seam v Right")
+
+Sl_r <- pitch_locations_value(pitches[3,"Pitch_Type"],pitches[3,"Velocity"],pitches[3,"Release_Extension"],pitches[3,"Release_Height"],pitches[3,"Horizontal_Movement"],pitches[3,"Vertical_Movement"], "R") +labs(title="Slider v Right")
+
+cu_r <- pitch_locations_value(pitches[4,"Pitch_Type"],pitches[4,"Velocity"],pitches[4,"Release_Extension"],pitches[4,"Release_Height"],pitches[4,"Horizontal_Movement"],pitches[4,"Vertical_Movement"],"R") +labs(title="Curveball v Right")
+
+ch_r <- pitch_locations_value(pitches[5,"Pitch_Type"],pitches[5,"Velocity"],pitches[5,"Release_Extension"],pitches[5,"Release_Height"],pitches[5,"Horizontal_Movement"],pitches[5,"Vertical_Movement"],"R") +labs(title="Change-up v Right")
 
 grid.arrange(
   ff,
+  ft,
   sl,
+  cu,
   ch,
   ff_r,
+  ft_r,
   Sl_r,
+  cu_r,
   ch_r,
   nrow = 2,
   top = "",
